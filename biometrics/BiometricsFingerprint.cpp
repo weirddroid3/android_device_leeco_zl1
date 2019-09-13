@@ -20,6 +20,7 @@
 #include <hardware/hardware.h>
 #include <hardware/fingerprint.h>
 #include "BiometricsFingerprint.h"
+#include <cutils/properties.h>
 
 #include <inttypes.h>
 #include <unistd.h>
@@ -33,6 +34,9 @@ namespace fingerprint {
 namespace V2_1 {
 namespace implementation {
 
+// Supported fingerprint HAL version
+static bool is_goodix = false;
+
 using RequestStatus =
         android::hardware::biometrics::fingerprint::V2_1::RequestStatus;
 
@@ -40,8 +44,16 @@ BiometricsFingerprint *BiometricsFingerprint::sInstance = nullptr;
 
 BiometricsFingerprint::BiometricsFingerprint() : mClientCallback(nullptr), mDevice(nullptr) {
     sInstance = this; // keep track of the most recent instance
+    char vend [PROPERTY_VALUE_MAX];
+    property_get("ro.hardware.fingerprint", vend, NULL);
 
-    mDevice = getWrapperService(BiometricsFingerprint::notify);
+    if (!strcmp(vend, "searchf")) {
+        is_goodix = false;
+        mDevice = openHal();
+    } else if (!strcmp(vend, "goodix")) {
+        is_goodix = true;
+        mDevice = getWrapperService(BiometricsFingerprint::notify);
+    }
 
     if (!mDevice) {
         ALOGE("Can't open HAL module");
@@ -222,7 +234,7 @@ Return<RequestStatus> BiometricsFingerprint::setActiveGroup(uint32_t gid,
         return RequestStatus::SYS_EINVAL;
     }
     int ret = mDevice->set_active_group(mDevice, gid, storePath.c_str());
-    if (ret > 0)
+    if ((ret > 0) && is_goodix)
         ret = 0;
     return ErrorFilter(ret);
 }
